@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>댓글 분석 — 롯데자이언츠 YT</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23a83848'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='central' text-anchor='middle' fill='white' font-size='18'%3E💬%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<!-- SheetJS for Excel parsing -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --red:    #a83848;
+    --navy:   #2e4a82;
+    --navy2:  #5577b0;
+    --bg:     #f3f4f8;
+    --surface:#ffffff;
+    --border: #e3e5ef;
+    --text:   #1e2235;
+    --sub:    #67708f;
+    --up:     #2d7d58;
+    --down:   #a83848;
+    --amber:  #b07730;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg); color: var(--text);
+    font-size: 14px; line-height: 1.65; word-break: keep-all;
+  }
+
+  nav {
+    position: sticky; top: 0; z-index: 200;
+    background: var(--navy);
+    display: flex; align-items: center; gap: 2px;
+    padding: 0 24px; height: 46px; overflow-x: auto;
+  }
+  nav::-webkit-scrollbar { display: none; }
+  nav .brand { color: #fff; font-weight: 700; font-size: 13px; margin-right: 14px; white-space: nowrap; flex-shrink: 0; }
+  nav a {
+    color: rgba(255,255,255,0.6); text-decoration: none;
+    font-size: 12.5px; font-weight: 500; white-space: nowrap;
+    padding: 5px 10px; border-radius: 6px; transition: all 0.15s;
+  }
+  nav a:hover { color: #fff; background: rgba(255,255,255,0.1); }
+  nav a.active { color: #fff; background: rgba(255,255,255,0.18); }
+
+  header {
+    background: linear-gradient(135deg, #253d70 0%, #1a2d55 100%);
+    color: #fff; padding: 44px 40px 36px;
+  }
+  header .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 1.8px; text-transform: uppercase; color: rgba(255,255,255,0.45); margin-bottom: 10px; }
+  header h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.25; margin-bottom: 8px; }
+  header h1 em { font-style: normal; color: #e8778a; }
+  header .meta { font-size: 13px; color: rgba(255,255,255,0.45); }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* ── 입력 탭 ── */
+  .input-section {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 28px; margin-top: 28px;
+  }
+  .tab-bar {
+    display: flex; gap: 4px; margin-bottom: 24px;
+    border-bottom: 2px solid var(--border); padding-bottom: 0;
+  }
+  .tab-btn {
+    padding: 8px 18px; font-size: 13px; font-weight: 600;
+    background: none; border: none; cursor: pointer; color: var(--sub);
+    border-bottom: 2px solid transparent; margin-bottom: -2px;
+    transition: all 0.15s; border-radius: 6px 6px 0 0;
+  }
+  .tab-btn.active { color: var(--navy); border-bottom-color: var(--navy); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .input-label { font-size: 12px; font-weight: 700; color: var(--sub); letter-spacing: 0.4px; text-transform: uppercase; margin-bottom: 8px; }
+  .url-row { display: flex; gap: 10px; }
+  .url-input {
+    flex: 1; padding: 10px 14px; border: 1px solid var(--border);
+    border-radius: 8px; font-size: 14px; font-family: inherit;
+    background: var(--bg); color: var(--text);
+    transition: border-color 0.15s;
+  }
+  .url-input:focus { outline: none; border-color: var(--navy); background: #fff; }
+  .btn-primary {
+    padding: 10px 20px; background: var(--navy); color: #fff;
+    border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; font-family: inherit;
+    transition: background 0.15s;
+  }
+  .btn-primary:hover { background: var(--navy2); }
+  .btn-primary:disabled { background: #aab; cursor: not-allowed; }
+
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: 10px;
+    padding: 32px; text-align: center; cursor: pointer;
+    transition: all 0.15s; background: var(--bg);
+  }
+  .upload-zone:hover, .upload-zone.drag-over { border-color: var(--navy); background: #eef1fa; }
+  .upload-zone input[type=file] { display: none; }
+  .upload-icon { font-size: 36px; margin-bottom: 10px; }
+  .upload-zone p { font-size: 13px; color: var(--sub); }
+  .upload-zone strong { color: var(--navy); cursor: pointer; }
+  .file-hint { font-size: 11px; color: var(--sub); margin-top: 8px; }
+
+  /* ── 로딩 ── */
+  .loading { display: none; text-align: center; padding: 40px 0; }
+  .loading.show { display: block; }
+  .spinner {
+    width: 36px; height: 36px; border: 3px solid var(--border);
+    border-top-color: var(--navy); border-radius: 50%;
+    animation: spin 0.7s linear infinite; margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading p { font-size: 13px; color: var(--sub); }
+
+  /* ── 에러 ── */
+  .error-box {
+    display: none; background: #fdf0f0; border: 1px solid #f5c6cb;
+    border-left: 4px solid var(--red); border-radius: 8px;
+    padding: 14px 18px; margin-top: 16px; font-size: 13px; color: #721c24;
+  }
+  .error-box.show { display: block; }
+
+  /* ── 결과 ── */
+  #results { display: none; margin-top: 32px; }
+  #results.show { display: block; }
+
+  .result-meta {
+    background: var(--navy); color: #fff; border-radius: 10px;
+    padding: 16px 20px; margin-bottom: 24px;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  }
+  .result-meta .yt-title { font-weight: 700; font-size: 14px; flex: 1; min-width: 200px; }
+  .result-meta .yt-stats { font-size: 12px; color: rgba(255,255,255,0.6); }
+  .yt-link { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 12px; }
+  .yt-link:hover { color: #fff; }
+
+  section.result-section { margin-top: 36px; }
+  section.result-section h2 {
+    font-size: 16px; font-weight: 700; letter-spacing: -0.3px;
+    margin-bottom: 16px; padding-bottom: 10px;
+    border-bottom: 2px solid var(--navy);
+    display: flex; align-items: center; gap: 8px;
+  }
+  section.result-section h2 .num {
+    background: var(--navy); color: #fff;
+    font-size: 11px; font-weight: 700;
+    width: 22px; height: 22px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+
+  /* TOP3 카드 */
+  .top3-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .top3-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px;
+    display: grid; grid-template-columns: 36px 1fr auto;
+    gap: 12px; align-items: start;
+  }
+  .top3-card .rank {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--navy); color: #fff;
+    font-size: 15px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .top3-card .rank.gold   { background: #c9942a; }
+  .top3-card .rank.silver { background: #7a8a9a; }
+  .top3-card .rank.bronze { background: #a0714f; }
+  .top3-card .comment-text { font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+  .top3-card .author { font-size: 11px; color: var(--sub); margin-top: 4px; }
+  .top3-card .stat-badge {
+    font-size: 12px; font-weight: 700; color: var(--navy);
+    background: #e4eaf5; padding: 4px 10px; border-radius: 20px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* 감성 분석 */
+  .sentiment-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .sent-card {
+    border-radius: 10px; padding: 18px 16px; text-align: center;
+  }
+  .sent-card.pos { background: #e8f5ee; border: 1px solid #b7dfca; }
+  .sent-card.neg { background: #fdecea; border: 1px solid #f5b8b5; }
+  .sent-card.neu { background: var(--bg); border: 1px solid var(--border); }
+  .sent-emoji { font-size: 28px; margin-bottom: 6px; }
+  .sent-label { font-size: 12px; font-weight: 700; color: var(--sub); margin-bottom: 6px; }
+  .sent-count { font-size: 28px; font-weight: 700; letter-spacing: -1px; }
+  .sent-pct   { font-size: 13px; color: var(--sub); font-weight: 600; }
+  .sent-bar-wrap { margin-top: 12px; background: var(--bg); border-radius: 8px; height: 8px; overflow: hidden; border: 1px solid var(--border); }
+  .sent-bar-inner { height: 100%; border-radius: 8px; transition: width 0.8s ease; }
+
+  /* 키워드 */
+  .keyword-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .kw-item {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px;
+  }
+  .kw-rank { font-size: 11px; color: var(--sub); width: 18px; flex-shrink: 0; text-align: right; }
+  .kw-word { font-size: 13px; font-weight: 700; flex: 1; }
+  .kw-bar-wrap { width: 60px; height: 6px; background: var(--bg); border-radius: 4px; overflow: hidden; flex-shrink: 0; }
+  .kw-bar { height: 100%; background: var(--navy2); border-radius: 4px; }
+  .kw-cnt { font-size: 11px; color: var(--sub); width: 24px; text-align: right; flex-shrink: 0; }
+
+  /* 요구사항 */
+  .req-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 4px solid var(--amber);
+    border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;
+    font-size: 13px; line-height: 1.65; white-space: pre-wrap; word-break: break-all;
+  }
+  .req-meta { font-size: 11px; color: var(--sub); margin-top: 4px; }
+
+  /* 감성별 대표 댓글 */
+  .sent-sample {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; margin-bottom: 10px;
+  }
+  .sent-sample-hdr {
+    padding: 10px 14px; font-size: 12px; font-weight: 700;
+  }
+  .sent-sample-hdr.pos { background: #e8f5ee; color: var(--up); }
+  .sent-sample-hdr.neg { background: #fdecea; color: var(--down); }
+  .sent-sample-body { padding: 10px 14px; font-size: 13px; line-height: 1.6; color: var(--sub); }
+
+  .tbl-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: var(--navy); color: #fff; font-size: 12px; font-weight: 600; text-align: left; padding: 10px 14px; }
+  td { font-size: 13px; padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text); }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: #f7f8fb; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .note { font-size: 12px; color: var(--sub); margin-top: 8px; padding-left: 12px; border-left: 2px solid var(--border); line-height: 1.65; }
+
+  footer { background: #1e2a4a; color: rgba(255,255,255,0.4); font-size: 12px; padding: 28px 40px; line-height: 1.8; }
+  footer .footer-copy { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.65); margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">롯데자이언츠 YT</span>
+  <a href="index.html">📊 Q1 리포트</a>
+  <a href="comments.html" class="active">💬 댓글 분석</a>
+</nav>
+
+<header>
+  <div class="eyebrow">Giants TV · Comment Analysis</div>
+  <h1>💬 유튜브 <em>댓글 분석</em></h1>
+  <div class="meta">영상 링크 또는 엑셀 파일을 넣으면 바로 분석해드립니다</div>
+</header>
+
+<div class="container">
+
+  <!-- ── 입력 섹션 ── -->
+  <div class="input-section">
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('url')">🔗 YouTube 링크</button>
+      <button class="tab-btn" onclick="switchTab('file')">📂 파일 업로드</button>
+    </div>
+
+    <!-- URL 탭 -->
+    <div class="tab-panel active" id="tab-url">
+      <div class="input-label">YouTube 영상 링크</div>
+      <div class="url-row">
+        <input class="url-input" id="ytUrl" type="text"
+          placeholder="https://www.youtube.com/watch?v=xxxxx  또는  youtu.be/xxxxx"
+          onkeydown="if(event.key==='Enter') analyzeUrl()">
+        <button class="btn-primary" onclick="analyzeUrl()" id="urlBtn">분석 시작</button>
+      </div>
+      <p class="note" style="margin-top:10px">댓글이 비활성화된 영상은 분석이 불가능합니다. 최대 200개 댓글을 수집합니다.</p>
+    </div>
+
+    <!-- 파일 업로드 탭 -->
+    <div class="tab-panel" id="tab-file">
+      <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()"
+        ondragover="event.preventDefault(); this.classList.add('drag-over')"
+        ondragleave="this.classList.remove('drag-over')"
+        ondrop="handleDrop(event)">
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFile(event)">
+        <div class="upload-icon">📄</div>
+        <p><strong>클릭하거나 파일을 끌어다 놓으세요</strong></p>
+        <p class="file-hint">xlsx / xls / csv 지원 · 유튜브 스튜디오 댓글 내보내기 파일</p>
+      </div>
+      <p class="note" style="margin-top:10px">필수 컬럼: <code>내용</code>, <code>좋아요 수</code>, <code>댓글 유형</code>, <code>원댓글 작성자</code></p>
+    </div>
+  </div>
+
+  <!-- 로딩 -->
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p id="loadingMsg">댓글을 수집하는 중...</p>
+  </div>
+
+  <!-- 에러 -->
+  <div class="error-box" id="errorBox"></div>
+
+  <!-- ── 결과 ── -->
+  <div id="results">
+
+    <!-- 영상 메타 -->
+    <div class="result-meta" id="resultMeta"></div>
+
+    <!-- TOP3 좋아요 -->
+    <section class="result-section">
+      <h2><span class="num">1</span> 좋아요 TOP 3</h2>
+      <div class="top3-grid" id="top3Likes"></div>
+    </section>
+
+    <!-- TOP3 답글 -->
+    <section class="result-section">
+      <h2><span class="num">2</span> 답글 TOP 3</h2>
+      <div class="top3-grid" id="top3Replies"></div>
+    </section>
+
+    <!-- 감성 분석 -->
+    <section class="result-section">
+      <h2><span class="num">3</span> 전반적 여론</h2>
+      <div class="sentiment-row" id="sentimentRow"></div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;" id="sentimentSamples"></div>
+    </section>
+
+    <!-- 키워드 -->
+    <section class="result-section">
+      <h2><span class="num">4</span> 반복 키워드 TOP 20</h2>
+      <div class="keyword-list" id="keywordList"></div>
+    </section>
+
+    <!-- 요구사항 -->
+    <section class="result-section">
+      <h2><span class="num">5</span> 시청자 요구사항</h2>
+      <div id="requestList"></div>
+    </section>
+
+  </div><!-- /results -->
+
+</div><!-- /container -->
+
+<footer>
+  <div class="footer-copy">롯데자이언츠 유튜브 채널 댓글 분석</div>
+  Giants TV · 내부용 분석 도구
+</footer>
+
+<script>
+// ─────────────────────────────────────────────
+//  유틸
+// ─────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('active', (i === 0 && tab === 'url') || (i === 1 && tab === 'file'));
+  });
+  document.getElementById('tab-url').classList.toggle('active', tab === 'url');
+  document.getElementById('tab-file').classList.toggle('active', tab === 'file');
+  hideError(); hideResults();
+}
+
+function showLoading(msg) {
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('loadingMsg').textContent = msg || '분석 중...';
+  hideError(); hideResults();
+}
+function hideLoading() { document.getElementById('loading').classList.remove('show'); }
+function showError(msg) { const b = document.getElementById('errorBox'); b.textContent = msg; b.classList.add('show'); }
+function hideError() { document.getElementById('errorBox').classList.remove('show'); }
+function hideResults() { document.getElementById('results').classList.remove('show'); }
+
+function extractVideoId(url) {
+  url = url.trim();
+  const m = url.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+// ─────────────────────────────────────────────
+//  YouTube URL → API 호출
+// ─────────────────────────────────────────────
+async function analyzeUrl() {
+  const raw = document.getElementById('ytUrl').value.trim();
+  if (!raw) return showError('YouTube 링크를 입력해주세요.');
+  const videoId = extractVideoId(raw);
+  if (!videoId) return showError('올바른 YouTube 링크를 입력해주세요. (watch?v=... 또는 youtu.be/...)');
+
+  document.getElementById('urlBtn').disabled = true;
+  showLoading('유튜브 댓글 수집 중... (최대 200개)');
+
+  try {
+    const res = await fetch(`/api/comments?videoId=${videoId}&maxResults=200`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '알 수 없는 오류');
+    if (!data.comments?.length) throw new Error('수집된 댓글이 없습니다. 댓글이 비활성화된 영상일 수 있어요.');
+
+    hideLoading();
+    renderResults(data.comments, {
+      title: `YouTube 영상 (${videoId})`,
+      link: `https://youtu.be/${videoId}`,
+      source: 'API',
+    });
+  } catch (e) {
+    hideLoading();
+    showError('⚠️ ' + e.message);
+  } finally {
+    document.getElementById('urlBtn').disabled = false;
+  }
+}
+
+// ─────────────────────────────────────────────
+//  파일 업로드
+// ─────────────────────────────────────────────
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+}
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (file) processFile(file);
+}
+
+function processFile(file) {
+  showLoading('파일 읽는 중...');
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+      if (!rows.length) throw new Error('파일에 데이터가 없습니다.');
+
+      // 컬럼 매핑
+      const sample = rows[0];
+      const keys = Object.keys(sample);
+      const findKey = (...cands) => keys.find(k => cands.some(c => k.includes(c))) || null;
+
+      const COL_TEXT    = findKey('내용', 'text', 'comment');
+      const COL_LIKES   = findKey('좋아요', 'likes', 'like');
+      const COL_TYPE    = findKey('유형', 'type');
+      const COL_PARENT  = findKey('원댓글');
+      const COL_AUTHOR  = findKey('작성자', 'author');
+
+      if (!COL_TEXT) throw new Error('댓글 내용 컬럼을 찾을 수 없습니다. (필수: 내용)');
+
+      // 답글 수 계산
+      const replyMap = {};
+      if (COL_TYPE && COL_PARENT) {
+        rows.forEach(r => {
+          const type = String(r[COL_TYPE] || '');
+          if (type.includes('답글') || type.includes('reply')) {
+            const parent = String(r[COL_PARENT] || '').trim();
+            if (parent) replyMap[parent] = (replyMap[parent] || 0) + 1;
+          }
+        });
+      }
+
+      const comments = rows
+        .filter(r => {
+          if (!COL_TYPE) return true;
+          const t = String(r[COL_TYPE] || '');
+          return !t.includes('답글') && !t.includes('reply');
+        })
+        .map(r => ({
+          text:    String(r[COL_TEXT] || '').replace(/<br>/gi, '\n'),
+          author:  COL_AUTHOR ? String(r[COL_AUTHOR] || '') : '',
+          likes:   parseInt(r[COL_LIKES]) || 0,
+          replies: replyMap[String(r[COL_AUTHOR] || '').trim()] || 0,
+          type:    '원댓글',
+        }));
+
+      if (!comments.length) throw new Error('원댓글 데이터를 찾을 수 없습니다.');
+
+      hideLoading();
+      renderResults(comments, { title: file.name, source: 'FILE' });
+    } catch (err) {
+      hideLoading();
+      showError('⚠️ ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ─────────────────────────────────────────────
+//  분석 & 렌더링
+// ─────────────────────────────────────────────
+const STOP_WORDS = new Set([
+  '롯데','자이언츠','자이언츠가','롯붕','롯팬','자티비','그','이','저','것','수','더',
+  '다','또','그냥','진짜','너무','정말','이제','거','가','을','를','은','는','도','로',
+  '으로','에','에서','와','과','만','나','우리','저는','내','제','어떤','보고','보는',
+  '왜','뭔','뭐','하는','같은','같이','때','그래서','그리고','하지만','근데','그러면',
+  'ㅋ','ㅜ','ㅠ','ㅎ','ㅋㅋ','ㅠㅠ','ㅜㅜ','ㅋㅋㅋ','ㅋㅋㅋㅋ','ㅋㅋㅋㅋㅋ','ㅋㅋㅋㅋㅋㅋ',
+  'br','...','이라','이라서','아서','어서','는데','인데','지금','올해','작년','어제','오늘',
+  '이번','다음','있는','없는','있고','없고','많이','이게','그게','이렇게','저렇게','모든',
+  '다시','항상','계속','요즘','벌써','아직','원래','이제는','하네','같아','같아서','같은데',
+  '그런데','봐도','해야','해도','할','하고','하지','하면','해서','되면','되고','될','됐',
+  '여기','저기','거기','어떻게','지금은','근거','그러니까','이봐라','심지어','아직',
+]);
+
+const POS_WORDS = ['좋','재밌','기쁘','행복','최고','잘한','멋있','사랑','응원','기대',
+  '화이팅','파이팅','대박','훌륭','감사','기특','개추','좋아','잘하','기뻐','뿌듯','잘됐','완벽'];
+const NEG_WORDS = ['나쁘','별로','싫','노잼','재미없','구리','최악','아쉽','실망','불만','짜증',
+  '답답','문제','후퇴','망했','구린','건조','무성의','성의없','젤재미없','개노잼'];
+
+function classify(text) {
+  const pos = POS_WORDS.reduce((s, w) => s + (text.includes(w) ? 1 : 0), 0);
+  const neg = NEG_WORDS.reduce((s, w) => s + (text.includes(w) ? 1 : 0), 0);
+  return pos > neg ? '긍정' : neg > pos ? '부정' : '중립';
+}
+
+function extractKeywords(texts) {
+  const freq = {};
+  for (const text of texts) {
+    const clean = text.replace(/[^\w가-힣]/g, ' ');
+    for (const w of clean.split(/\s+/)) {
+      if (w.length < 2 || STOP_WORDS.has(w) || /^\d+$/.test(w)) continue;
+      if (w.includes('롯데') || w.includes('자이언츠')) continue;
+      freq[w] = (freq[w] || 0) + 1;
+    }
+  }
+  return Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 20);
+}
+
+const REQ_RE = /궁금|해주|해줘|했으면|바랍니다|바라요|하면 좋겠|좋겠|부탁|요청|해줬으면|보여줘|보여주|알려주|안될까|해주라|해주세요|해줘야/;
+const MEDALS = ['🥇', '🥈', '🥉'];
+
+function renderResults(comments, meta) {
+  // ── 분석 ──
+  const withSent = comments.map(c => ({ ...c, sent: classify(c.text) }));
+  const top3L = [...comments].sort((a,b) => b.likes - a.likes).slice(0, 3);
+  const top3R = [...comments].sort((a,b) => b.replies - a.replies).slice(0, 3);
+  const sentCounts = { '긍정': 0, '부정': 0, '중립': 0 };
+  withSent.forEach(c => sentCounts[c.sent]++);
+  const keywords = extractKeywords(comments.map(c => c.text));
+  const requests = comments.filter(c => REQ_RE.test(c.text));
+  const total = comments.length;
+
+  // ── 메타 헤더 ──
+  const metaEl = document.getElementById('resultMeta');
+  metaEl.innerHTML = `
+    <div class="yt-title">${meta.link ? `<a class="yt-link" href="${meta.link}" target="_blank">▶ ${meta.title}</a>` : meta.title}</div>
+    <div class="yt-stats">댓글 ${total}개 분석 완료 · ${meta.source === 'API' ? 'YouTube API' : '파일 업로드'}</div>
+  `;
+
+  // ── TOP3 좋아요 ──
+  document.getElementById('top3Likes').innerHTML = top3L.map((c, i) => `
+    <div class="top3-card">
+      <div class="rank ${['gold','silver','bronze'][i]}">${MEDALS[i]}</div>
+      <div>
+        <div class="comment-text">${escHtml(c.text)}</div>
+        <div class="author">@${escHtml(c.author)}</div>
+      </div>
+      <div class="stat-badge">👍 ${c.likes.toLocaleString()}</div>
+    </div>`).join('');
+
+  // ── TOP3 답글 ──
+  document.getElementById('top3Replies').innerHTML = top3R.length && top3R[0].replies > 0
+    ? top3R.map((c, i) => `
+      <div class="top3-card">
+        <div class="rank ${['gold','silver','bronze'][i]}">${MEDALS[i]}</div>
+        <div>
+          <div class="comment-text">${escHtml(c.text)}</div>
+          <div class="author">@${escHtml(c.author)}</div>
+        </div>
+        <div class="stat-badge">💬 ${c.replies}개</div>
+      </div>`).join('')
+    : '<p class="note">답글 수 데이터가 없습니다 (파일에 답글 유형 컬럼이 필요합니다).</p>';
+
+  // ── 감성 ──
+  const sentDef = [
+    { key: '긍정', cls: 'pos', emoji: '😊', color: '#2d7d58' },
+    { key: '부정', cls: 'neg', emoji: '😟', color: '#a83848' },
+    { key: '중립', cls: 'neu', emoji: '😐', color: '#67708f' },
+  ];
+  document.getElementById('sentimentRow').innerHTML = sentDef.map(s => {
+    const cnt = sentCounts[s.key];
+    const pct = total ? (cnt / total * 100) : 0;
+    return `
+      <div class="sent-card ${s.cls}">
+        <div class="sent-emoji">${s.emoji}</div>
+        <div class="sent-label">${s.key}</div>
+        <div class="sent-count">${cnt}</div>
+        <div class="sent-pct">${pct.toFixed(1)}%</div>
+        <div class="sent-bar-wrap"><div class="sent-bar-inner" style="width:${pct}%;background:${s.color}"></div></div>
+      </div>`;
+  }).join('');
+
+  // 긍/부 대표 댓글
+  const posSamples = withSent.filter(c => c.sent==='긍정').sort((a,b)=>b.likes-a.likes).slice(0,2);
+  const negSamples = withSent.filter(c => c.sent==='부정').sort((a,b)=>b.likes-a.likes).slice(0,2);
+  const samplesEl = document.getElementById('sentimentSamples');
+  samplesEl.innerHTML = '';
+  if (posSamples.length) samplesEl.innerHTML += renderSentSamples(posSamples, '😊 긍정 대표 댓글', 'pos');
+  if (negSamples.length) samplesEl.innerHTML += renderSentSamples(negSamples, '😟 부정 대표 댓글', 'neg');
+
+  // ── 키워드 ──
+  const maxCnt = keywords[0]?.[1] || 1;
+  document.getElementById('keywordList').innerHTML = keywords.map(([word, cnt], i) => `
+    <div class="kw-item">
+      <span class="kw-rank">${i+1}</span>
+      <span class="kw-word">${escHtml(word)}</span>
+      <div class="kw-bar-wrap"><div class="kw-bar" style="width:${cnt/maxCnt*100}%"></div></div>
+      <span class="kw-cnt">${cnt}</span>
+    </div>`).join('');
+
+  // ── 요구사항 ──
+  const reqEl = document.getElementById('requestList');
+  if (requests.length === 0) {
+    reqEl.innerHTML = '<p class="note">요구사항 키워드가 포함된 댓글이 없습니다.</p>';
+  } else {
+    reqEl.innerHTML = requests.sort((a,b)=>b.likes-a.likes).map(c => `
+      <div class="req-item">
+        ${escHtml(c.text)}
+        <div class="req-meta">@${escHtml(c.author)} · 👍 ${c.likes}</div>
+      </div>`).join('');
+  }
+
+  document.getElementById('results').classList.add('show');
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderSentSamples(arr, label, cls) {
+  return `<div class="sent-sample">
+    <div class="sent-sample-hdr ${cls}">${label}</div>
+    ${arr.map(c => `<div class="sent-sample-body">${escHtml(c.text)}<br><small>@${escHtml(c.author)} · 👍 ${c.likes}</small></div>`).join('<hr style="margin:0;border-color:#eee">')}
+  </div>`;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
