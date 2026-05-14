@@ -1,4 +1,4 @@
-export const config = { matcher: '/' };
+export const config = { matcher: ['/', '/comments', '/comments.html'] };
 
 export default function middleware(req) {
   const auth = req.headers.get('authorization');
