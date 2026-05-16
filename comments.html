@@ -237,6 +237,23 @@
 
   .note { font-size: 12px; color: var(--sub); margin-top: 8px; padding-left: 12px; border-left: 2px solid var(--border); line-height: 1.65; }
 
+  .btn-secondary {
+    display: inline-block; padding: 8px 16px; background: var(--bg); color: var(--sub);
+    border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-weight: 600;
+    cursor: pointer; font-family: inherit; transition: background 0.15s; margin-top: 12px;
+  }
+  .btn-secondary:hover { background: var(--border); }
+  .comment-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px; margin-bottom: 6px;
+    display: grid; grid-template-columns: 28px 1fr auto;
+    gap: 10px; align-items: start;
+  }
+  .comment-card .sent-tag { font-size: 16px; text-align: center; margin-top: 1px; }
+  .comment-card .c-text { font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; }
+  .comment-card .c-author { font-size: 11px; color: var(--sub); margin-top: 3px; }
+  .comment-card .c-likes { font-size: 12px; color: var(--sub); white-space: nowrap; padding-top: 2px; }
+
   footer { background: #1e2a4a; color: rgba(255,255,255,0.4); font-size: 12px; padding: 28px 40px; line-height: 1.8; }
   footer .footer-copy { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.65); margin-bottom: 6px; }
 </style>
@@ -335,6 +352,16 @@
     <section class="result-section">
       <h2><span class="num">5</span> 시청자 요구사항</h2>
       <div id="requestList"></div>
+    </section>
+
+    <!-- 전체 댓글 -->
+    <section class="result-section">
+      <h2><span class="num">6</span> 전체 댓글</h2>
+      <button class="btn-primary" id="allCommentsBtn" onclick="toggleAllComments(true)">💬 전체 댓글 보기</button>
+      <div id="allCommentsWrap" style="display:none">
+        <div id="allCommentsList"></div>
+        <button class="btn-secondary" onclick="toggleAllComments(false)">▲ 목록 닫기</button>
+      </div>
     </section>
 
   </div><!-- /results -->
@@ -497,16 +524,37 @@ const STOP_WORDS = new Set([
   '다시','항상','계속','요즘','벌써','아직','원래','이제는','하네','같아','같아서','같은데',
   '그런데','봐도','해야','해도','할','하고','하지','하면','해서','되면','되고','될','됐',
   '여기','저기','거기','어떻게','지금은','근거','그러니까','이봐라','심지어','아직',
+  '오늘도','잘한다','끝까지','경기','선수는','선수','결국',
+  '경기가','경기를','경기에','경기는','경기에서',
+  '선수가','선수를','선수의','선수들','선수들이','선수들도','선수들을',
+  '잘해요','잘해서','잘하고','잘했어','잘했다','잘하는','잘하네',
 ]);
 
-const POS_WORDS = ['좋','재밌','기쁘','행복','최고','잘한','멋있','사랑','응원','기대',
-  '화이팅','파이팅','대박','훌륭','감사','기특','개추','좋아','잘하','기뻐','뿌듯','잘됐','완벽'];
-const NEG_WORDS = ['나쁘','별로','싫','노잼','재미없','구리','최악','아쉽','실망','불만','짜증',
-  '답답','문제','후퇴','망했','구린','건조','무성의','성의없','젤재미없','개노잼'];
+const POS_WORDS = [
+  '좋','재밌','기쁘','행복','최고','잘한','멋있','사랑','응원','기대',
+  '화이팅','파이팅','대박','훌륭','감사','기특','개추','좋아','잘하','기뻐','뿌듯','잘됐','완벽',
+  '레전드','역대급','클래스','인정','갓','오지','신박','트렌디','감각있','센스있','신선',
+  '힙해','잘만들','퀄리티','설레','흥분','웃겨','웃기','즐거','이쁘','귀여','찐팬','짱','굳',
+];
+const NEG_WORDS = [
+  '나쁘','별로','싫','노잼','재미없','구리','최악','아쉽','실망','불만','짜증',
+  '답답','문제','후퇴','망했','구린','건조','무성의','성의없','젤재미없','개노잼',
+  '지루','식상','뻔해','뻔한','촌스러','구식','감각없','뒤졌','못해','안타까','속상',
+  '화나','열받','형편없','졌','패배','부진','걱정','슬프','슬럼프','안좋','실력없',
+];
 
 function classify(text) {
-  const pos = POS_WORDS.reduce((s, w) => s + (text.includes(w) ? 1 : 0), 0);
-  const neg = NEG_WORDS.reduce((s, w) => s + (text.includes(w) ? 1 : 0), 0);
+  const NEG_PREFIX = /(?:안|못|아니|없|전혀|절대)\s*$/;
+  let pos = 0, neg = 0;
+  for (const w of POS_WORDS) {
+    if (!text.includes(w)) continue;
+    const before = text.slice(Math.max(0, text.indexOf(w) - 5), text.indexOf(w));
+    if (NEG_PREFIX.test(before)) neg++;
+    else pos++;
+  }
+  for (const w of NEG_WORDS) {
+    if (text.includes(w)) neg++;
+  }
   return pos > neg ? '긍정' : neg > pos ? '부정' : '중립';
 }
 
@@ -617,6 +665,8 @@ function renderResults(comments, meta) {
       </div>`).join('');
   }
 
+  renderAllComments(withSent);
+
   document.getElementById('results').classList.add('show');
   document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -626,6 +676,28 @@ function renderSentSamples(arr, label, cls) {
     <div class="sent-sample-hdr ${cls}">${label}</div>
     ${arr.map(c => `<div class="sent-sample-body">${escHtml(c.text)}<br><small>@${escHtml(c.author)} · 👍 ${c.likes}</small></div>`).join('<hr style="margin:0;border-color:#eee">')}
   </div>`;
+}
+
+function toggleAllComments(open) {
+  document.getElementById('allCommentsWrap').style.display = open ? 'block' : 'none';
+  document.getElementById('allCommentsBtn').style.display = open ? 'none' : 'inline-block';
+}
+
+function renderAllComments(withSent) {
+  const SENT_EMOJI = { '긍정': '😊', '부정': '😟', '중립': '😐' };
+  document.getElementById('allCommentsList').innerHTML = [...withSent]
+    .sort((a, b) => b.likes - a.likes)
+    .map(c => `
+      <div class="comment-card">
+        <div class="sent-tag">${SENT_EMOJI[c.sent] || '😐'}</div>
+        <div>
+          <div class="c-text">${escHtml(c.text)}</div>
+          <div class="c-author">@${escHtml(c.author)}</div>
+        </div>
+        <div class="c-likes">👍 ${c.likes.toLocaleString()}</div>
+      </div>`).join('');
+  document.getElementById('allCommentsBtn').textContent = `💬 전체 댓글 보기 (${withSent.length}개 · 좋아요 순)`;
+  toggleAllComments(false);
 }
 
 function escHtml(s) {
